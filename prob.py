@@ -4,14 +4,14 @@ import random
 import matplotlib.pyplot as plt
 import streamlit as st
 
-class LogisticsEnv:
+# 환경: 5x5 그리드
+class SimpleEnv:
     def __init__(self):
         self.grid_size = 5
         self.start = (0, 0)
         self.goal = (4, 4)
         self.state = self.start
-        self.obstacles = [(1, 1), (2, 2), (3, 3)]
-        self.actions = [(0, -1), (0, 1), (-1, 0), (1, 0)]  # 좌, 우, 상, 하
+        self.actions = [(0, 1), (0, -1), (1, 0), (-1, 0)]  # 우, 좌, 하, 상
 
     def reset(self):
         self.state = self.start
@@ -23,35 +23,28 @@ class LogisticsEnv:
         next_x, next_y = x + dx, y + dy
 
         if 0 <= next_x < self.grid_size and 0 <= next_y < self.grid_size:
-            next_state = (next_x, next_y)
+            self.state = (next_x, next_y)
+            reward = 10 if self.state == self.goal else -1
+            done = self.state == self.goal
         else:
-            return self.state, -5, False
+            reward = -5
+            done = False
+        return self.state, reward, done
 
-        reward = -1
-        done = False
-
-        if next_state in self.obstacles:
-            reward = -10
-            next_state = self.state
-        elif next_state == self.goal:
-            reward = 100
-            done = True
-
-        self.state = next_state
-        return next_state, reward, done
-
-class QLearningAgent:
+# 에이전트: Q-learning + 소프트맥스
+class Agent:
     def __init__(self):
         self.q_table = np.zeros((5, 5, 4))
-        self.epsilon = 1.0
-        self.epsilon_min = 0.01
-        self.epsilon_decay = 0.995
+        self.temp = 1.0  # 소프트맥스 온도
+
+    def softmax(self, q_values):
+        exp_q = np.exp(q_values / self.temp)
+        return exp_q / np.sum(exp_q)
 
     def choose_action(self, state):
-        if random.random() < self.epsilon:
-            return random.randint(0, 3)
         x, y = state
-        return np.argmax(self.q_table[x, y])
+        probs = self.softmax(self.q_table[x, y])
+        return np.random.choice(4, p=probs)
 
     def update(self, state, action, reward, next_state):
         x, y = state
@@ -59,23 +52,22 @@ class QLearningAgent:
         self.q_table[x, y, action] += 0.1 * (
             reward + 0.95 * np.max(self.q_table[next_x, next_y]) - self.q_table[x, y, action]
         )
-        if self.epsilon > self.epsilon_min:
-            self.epsilon *= self.epsilon_decay
 
+# 경로 시각화
 def plot_path(env, agent, episode):
     path = [env.start]
     state = env.reset()
     done = False
-    while not done:
+    for _ in range(20):
         action = agent.choose_action(state)
         next_state, _, done = env.step(action)
         path.append(next_state)
         state = next_state
+        if done:
+            break
 
     fig, ax = plt.subplots(figsize=(5, 5))
     grid = np.zeros((5, 5))
-    for obs in env.obstacles:
-        grid[obs] = -1
     grid[env.goal] = 2
     for x, y in path:
         if grid[x, y] == 0:
@@ -87,16 +79,17 @@ def plot_path(env, agent, episode):
     st.pyplot(fig)
     plt.close(fig)
 
+# 메인
 def main():
-    st.title("물류 경로 최적화")
-    env = LogisticsEnv()
-    agent = QLearningAgent()
+    st.title("확률 기반 경로 최적화")
+    env = SimpleEnv()
+    agent = Agent()
     rewards = []
 
-    for episode in range(50):
+    for episode in range(30):
         state = env.reset()
         total_reward = 0
-        for _ in range(50):
+        for _ in range(20):
             action = agent.choose_action(state)
             next_state, reward, done = env.step(action)
             agent.update(state, action, reward, next_state)
@@ -109,11 +102,9 @@ def main():
             st.write(f"에피소드 {episode}, 보상: {total_reward}")
             plot_path(env, agent, episode)
 
-    fig, ax = plt.subplots(figsize=(8, 4))
+    fig, ax = plt.subplots(figsize=(6, 3))
     ax.plot(rewards)
     ax.set_title('보상 그래프')
-    ax.set_xlabel('에피소드')
-    ax.set_ylabel('보상')
     st.pyplot(fig)
     plt.close(fig)
 
@@ -122,7 +113,7 @@ if __name__ == "__main__":
 ```
 
 ### 의존성 파일
-Streamlit Cloud 배포를 위해 루트 디렉토리에 아래 파일 추가:
+Streamlit Cloud 배포를 위해 프로젝트 루트에 아래 파일 추가:
 
 - **`requirements.txt`**:
   ```plaintext
@@ -141,12 +132,12 @@ Streamlit Cloud 배포를 위해 루트 디렉토리에 아래 파일 추가:
 ### 수행
 1. **코드 저장**:
    - `prob.py`를 위 코드로 덮어쓰기.
-   - 또는 177번째 줄 삭제 후 코드 확인.
+   - 이전 `SyntaxError` 있던 177번째 줄(`→` 포함 문구)은 이 코드에 없음.
 
-2. **파일 푸시**:
+2. **GitHub 푸시**:
    ```bash
    git add prob.py requirements.txt packages.txt
-   git commit -m "SyntaxError 수정"
+   git commit -m "간단한 확률 최적화 코드"
    git push origin main
    ```
 
@@ -162,8 +153,13 @@ Streamlit Cloud 배포를 위해 루트 디렉토리에 아래 파일 추가:
    streamlit run prob.py
    ```
 
-### 추가
-- **로그 확인**: 배포 실패 시 **Manage App** → **Logs** 공유.
-- **코드 다른 점**: `prob.py`가 위와 다르면 내용 공유해 주세요.
+### 확률 요소
+- **소프트맥스 정책**: `Agent.softmax`에서 Q-값을 확률로 변환해 행동 선택. 높은 Q-값의 행동이 더 자주 선택되지만, 낮은 Q-값도 가끔 탐험.
+- **랜덤 선택**: `np.random.choice`로 확률 분포 기반 행동 뽑기.
 
-이렇게 하면 오류 해결되고 배포 잘 될 거예요! 문제 있으면 바로 말해.
+### 왜 간단해?
+- `tensorflow` 없애고 Q-learning만 사용.
+- 에피소드 30개, 스텝 20개로 학습 빠름.
+- 최소한의 시각화로 Streamlit Cloud 부담 ↓.
+
+문제 있으면 로그나 에러 바로 말해! 😄
