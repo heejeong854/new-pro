@@ -1,0 +1,3 @@
+libfreetype6-dev
+pkg-config
+python3-distutils
